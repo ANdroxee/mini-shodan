@@ -1,0 +1,33 @@
+cat > .gitignore << 'EOF'
+# Environment variables
+.env
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+
+# Database
+postgres_data/
+*.sql.backup
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+EOF
