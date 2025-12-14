@@ -254,19 +254,6 @@ docker-compose logs postgres
 - [ ] Export reports (PDF/CSV)
 - [ ] Integration with Censys/VirusTotal APIs
 
-## 📝 License
 
-MIT License - see [LICENSE](LICENSE) file
-
-## 🤝 Contributing
-
-Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
-
-## 📧 Contact
-
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your Name](https://linkedin.com/in/yourprofile)
-
----
 
 **⭐ Star this repo if you find it useful!**
