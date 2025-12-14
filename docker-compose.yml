@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: shodan_postgres
+    environment:
+      POSTGRES_USER: shodan
+      POSTGRES_PASSWORD: shodan123
+      POSTGRES_DB: shodan_home
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - shodan_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shodan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # API Backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: shodan_api
+    environment:
+      DATABASE_URL: "postgres://shodan:shodan123@postgres:5432/shodan_home?sslmode=disable"
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    networks:
+      - shodan_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Scanner avec Scheduler
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile.scanner
+    container_name: shodan_scanner
+    environment:
+      DATABASE_URL: "postgres://shodan:shodan123@postgres:5432/shodan_home?sslmode=disable"
+      SCAN_TARGET: "${SCAN_TARGET:-192.168.1.0/24}"
+      SCAN_SCHEDULE: "${SCAN_SCHEDULE:-0 3 * * *}"
+      WORKERS: "${WORKERS:-10}"
+      RUN_ON_START: "true"
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Frontend (React)
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: shodan_frontend
+    environment:
+      VITE_API_URL: "http://localhost:8080"
+    ports:
+      - "3000:3000"
+    networks:
+      - shodan_net
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  shodan_net:
+    driver: bridge

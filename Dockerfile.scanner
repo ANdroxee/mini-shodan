@@ -1,0 +1,41 @@
+# Build stage
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Build scanner et scheduler
+RUN CGO_ENABLED=0 GOOS=linux go build -o scanner ./cmd/scanner
+RUN CGO_ENABLED=0 GOOS=linux go build -o scheduler ./cmd/scheduler
+
+# Runtime stage
+FROM alpine:latest
+
+# Install nmap et dépendances
+RUN apk --no-cache add \
+    nmap \
+    nmap-scripts \
+    ca-certificates \
+    tzdata
+
+WORKDIR /app
+
+COPY --from=builder /app/scanner .
+COPY --from=builder /app/scheduler .
+
+# Create non-root user avec les permissions nécessaires pour nmap
+RUN addgroup -g 1000 shodan && \
+    adduser -D -u 1000 -G shodan shodan && \
+    chown -R shodan:shodan /app
+
+# Nmap a besoin de certaines capacités
+# On les donne via docker-compose (cap_add)
+
+USER shodan
+
+# Par défaut, lancer le scheduler
+CMD ["./scheduler"]
