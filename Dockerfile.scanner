@@ -13,29 +13,23 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o scanner ./cmd/scanner
 RUN CGO_ENABLED=0 GOOS=linux go build -o scheduler ./cmd/scheduler
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.20
 
-# Install nmap et dépendances
-RUN apk --no-cache add \
-    nmap \
-    nmap-scripts \
-    ca-certificates \
-    tzdata
+RUN apk --no-cache add nmap nmap-scripts libcap ca-certificates tzdata \
+    # nmap reçoit les capacités réseau dont il a besoin (ARP, SYN, détection d'OS) sans tourner en root
+    && setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip "$(command -v nmap)"
 
 WORKDIR /app
 
 COPY --from=builder /app/scanner .
 COPY --from=builder /app/scheduler .
 
-# Create non-root user avec les permissions nécessaires pour nmap
 RUN addgroup -g 1000 shodan && \
     adduser -D -u 1000 -G shodan shodan && \
     chown -R shodan:shodan /app
 
-# Nmap a besoin de certaines capacités
-# On les donne via docker-compose (cap_add)
-
 USER shodan
+ENV NMAP_PRIVILEGED=true
 
-# Par défaut, lancer le scheduler
+# Par défaut : la boucle de scan (scheduler)
 CMD ["./scheduler"]

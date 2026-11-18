@@ -1,0 +1,57 @@
+@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource-variable/inter';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-page font-sans text-[15px] text-ink antialiased;
+  }
+  a {
+    @apply text-brand-ink;
+  }
+  a:hover {
+    @apply text-brand-dark;
+  }
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-brand;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-12 items-center justify-center gap-2 rounded-full px-5 font-medium no-underline transition disabled:cursor-progress disabled:opacity-70;
+  }
+  .btn-sm {
+    @apply h-11 px-4;
+  }
+  .btn-primary {
+    @apply bg-brand font-semibold text-white hover:bg-brand-ink hover:text-white;
+  }
+  .btn-dark {
+    @apply bg-ink font-semibold text-white hover:bg-[#1d2d4f] hover:text-white;
+  }
+  .btn-outline {
+    @apply border border-line bg-white text-ink hover:border-ink hover:text-ink;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-brand-ink hover:text-brand-dark;
+  }
+  .card {
+    @apply rounded-3xl bg-white;
+  }
+  .h-display {
+    @apply font-display font-bold tracking-[-0.02em];
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

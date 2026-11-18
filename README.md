@@ -1,259 +1,162 @@
 # 🔍 Shodan@Home
 
-A self-hosted network scanner and monitoring tool inspired by Shodan. Built with Go, PostgreSQL, and React.
+Un petit Shodan pour la maison : il **scanne tout ton réseau en boucle**, repère ce qui est branché, les portes laissées ouvertes, et t'explique en français courant quoi faire.
 
-![Dashboard Preview](docs/dashboard.png)
+Construit avec Go, PostgreSQL, nmap et React.
 
-## 🎯 Features
+## Ce que ça fait
 
-- **Automated Network Scanning**: Schedule scans with cron expressions
-- **Service Detection**: Identify open ports, services, and versions
-- **OS Fingerprinting**: Detect operating systems running on devices
-- **Risk Assessment**: Automatically flag dangerous open ports
-- **Real-time Dashboard**: Beautiful visualizations of your network
-- **Historical Data**: Track changes over time
-- **REST API**: Full API access to all data
-- **Docker Ready**: Complete Docker setup included
+- **Scan en boucle** — selon un planning (par défaut tous les jours à 3 h) et à la demande depuis le bouton « Vérifier maintenant »
+- **Score de sécurité** sur 100 et un résumé lisible : « Ton réseau va plutôt bien. 2 choses à régler. »
+- **Carte de la maison** — tous les appareils autour de la box, colorés selon leur état (Urgent, À vérifier, Nouveau, RAS, Hors ligne)
+- **Alertes intelligentes**, sans doublons d'un scan à l'autre :
+  - un **appareil inconnu** apparaît (le tout premier scan sert de référence) ;
+  - un **port risqué** s'ouvre — l'alerte se clôt toute seule quand il se ferme ;
+  - le **logiciel** derrière un port change de version ;
+  - un appareil **ne répond plus**.
+- Pour chaque alerte : ce qui se passe, pourquoi c'est important, **comment corriger** étape par étape, et la preuve technique (sortie nmap)
+- **Renommer** un appareil, dire « **je le connais** »
+- Détection du système (OS), de l'adresse MAC et du fabricant
 
-## 🏗️ Architecture
+### Ports surveillés
+
+| Gravité | Ports |
+|---------|-------|
+| Urgent (critique) | Telnet (23), FTP (21) |
+| À vérifier (élevée) | SMB (445), Bureau à distance (3389), MySQL (3306), SQL Server (1433) |
+| À vérifier (moyenne) | PostgreSQL (5432), Redis (6379) |
+
+## Architecture
 
 ```
-┌─────────────┐
-│  Frontend   │  React + Tailwind + Recharts
-│  (Port 3000)│
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│  API Server │  Go + Fiber
-│  (Port 8080)│
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│ PostgreSQL  │  Database
-│  (Port 5432)│
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│   Scanner   │  Go + Nmap (Scheduler)
-└─────────────┘
+┌──────────────┐
+│  Interface   │  React + Tailwind, servie par nginx (port 3000)
+└──────┬───────┘  nginx relaie /api vers l'API
+┌──────▼───────┐
+│     API      │  Go + Fiber (port 8080, accessible en local seulement)
+└──────┬───────┘
+┌──────▼───────┐
+│  PostgreSQL  │  schéma créé et mis à jour automatiquement
+└──────▲───────┘
+┌──────┴───────┐
+│   Scanner    │  Go + nmap, tourne en boucle (planning + scans demandés)
+└──────────────┘  réseau de l'hôte, pour voir les appareils du réseau local
 ```
 
-## 🚀 Quick Start
+## Démarrage
 
-### Prerequisites
+Prérequis : Docker et Docker Compose, sur une machine **Linux** branchée sur le réseau à surveiller (un Raspberry Pi ou un serveur de homelab fait très bien l'affaire).
 
-- Docker & Docker Compose
-- Nmap installed on host (for scanner container)
-- 2GB RAM minimum
-- Linux/macOS (Windows WSL2 supported)
-
-### Installation
-
-1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/shodan-home.git
-cd shodan-home
-```
-
-2. **Configure environment**
-```bash
-cp .env.example .env
-# Edit .env with your network range
-```
-
-3. **Start all services**
-```bash
+git clone https://github.com/ANdroxee/mini-shodan.git
+cd mini-shodan
+cp .env.example .env      # règle SCAN_TARGET sur ton réseau et change POSTGRES_PASSWORD
 make up
 ```
 
-4. **Access the dashboard**
-- Frontend: http://localhost:3000
-- API: http://localhost:8080
-- Health check: http://localhost:8080/health
+Puis ouvre **http://IP-de-la-machine:3000**. Le premier scan démarre tout de suite et prend quelques minutes.
 
-## 📦 Available Commands
+> Sur macOS ou Windows, Docker tourne dans une machine virtuelle : le scanner ne voit pas directement le réseau de la maison. Lance-le plutôt sur une machine Linux.
 
-```bash
-make build          # Build all containers
-make up             # Start all services
-make down           # Stop all services
-make logs           # View all logs
-make logs-api       # View API logs
-make logs-scanner   # View scanner logs
-make clean          # Remove everything
-make scan           # Run manual scan
-make stats          # Show network stats
-make db-shell       # Access PostgreSQL shell
-```
+## Installer dans une VM Proxmox
 
-## 🔧 Configuration
+**1. Créer la VM** (dans l'interface Proxmox, « Create VM ») :
 
-### Environment Variables
+| Réglage | Valeur |
+|---------|--------|
+| ISO | Debian 12 (netinst) |
+| CPU / RAM / disque | 2 cœurs · 2 Go · 16 Go |
+| Réseau | **Bridge `vmbr0`** (le pont relié à ta box), modèle VirtIO |
+| Pare-feu Proxmox sur la carte réseau | décoché (ou autoriser le port 3000) |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SCAN_TARGET` | `192.168.1.0/24` | Network to scan (CIDR notation) |
-| `SCAN_SCHEDULE` | `0 3 * * *` | Cron expression (3 AM daily) |
-| `WORKERS` | `10` | Concurrent scan workers |
-| `DATABASE_URL` | `postgres://...` | PostgreSQL connection string |
-| `PORT` | `8080` | API server port |
+Le point important, c'est le **bridge** : la VM doit être sur le même réseau que tes appareils, comme un vrai ordinateur branché sur la box. Sans ça, le scanner ne voit ni les appareils ni leurs adresses MAC.
 
-### Scan Schedule Examples
+**2. Installer Debian** : options par défaut, cocher « serveur SSH », pas d'environnement graphique. Ensuite, donne-lui une **IP fixe** (bail DHCP réservé dans l'interface de ta box) pour toujours retrouver l'interface à la même adresse.
+
+**3. Installer Shodan@Home** (en SSH sur la VM) :
 
 ```bash
-# Every day at 3 AM
-SCAN_SCHEDULE="0 3 * * *"
-
-# Every 6 hours
-SCAN_SCHEDULE="0 */6 * * *"
-
-# Every Monday at midnight
-SCAN_SCHEDULE="0 0 * * 1"
-
-# Every 30 minutes (for testing)
-SCAN_SCHEDULE="*/30 * * * *"
+sudo apt install -y git
+git clone https://github.com/ANdroxee/mini-shodan.git
+cd mini-shodan
+sudo ./scripts/install.sh
 ```
 
-## 📊 API Endpoints
+Le script installe Docker, détecte ton réseau, crée le `.env` avec un mot de passe aléatoire et lance tout. Les conteneurs redémarrent seuls avec la VM. Pense à cocher « Start at boot » dans les options de la VM.
 
-### Devices
-```bash
-GET /api/v1/devices              # List all devices
-GET /api/v1/devices/:ip          # Get device details
-GET /api/v1/devices/:ip/ports    # Get device ports
-GET /api/v1/devices?service=ssh  # Filter by service
-GET /api/v1/devices?active=true  # Only active devices
-```
+**Mettre à jour plus tard :** `git pull && sudo docker compose up -d --build`
 
-### Statistics
-```bash
-GET /api/v1/stats                # Network statistics
-GET /api/v1/search?q=192.168     # Search devices
-GET /api/v1/alerts               # Get unread alerts
-```
+## Réglages (`.env`)
 
-### Examples
+| Variable | Défaut | Rôle |
+|----------|--------|------|
+| `SCAN_TARGET` | `192.168.1.0/24` | Réseau à scanner (CIDR) |
+| `SCAN_SCHEDULE` | `0 3 * * *` | Fréquence (cron) : tous les jours à 3 h |
+| `SCAN_TIMEZONE` | `Europe/Paris` | Fuseau horaire du planning |
+| `WORKERS` | `10` | Appareils scannés en parallèle |
+| `POSTGRES_PASSWORD` | `shodan123` | Mot de passe de la base — **à changer** |
+
+Exemples de planning : `@every 30m` (toutes les 30 minutes), `0 */6 * * *` (toutes les 6 heures), `0 0 * * 1` (chaque lundi à minuit).
+
+## API
 
 ```bash
-# Get all devices
-curl http://localhost:8080/api/v1/devices | jq '.'
-
-# Find SSH servers
-curl http://localhost:8080/api/v1/devices?service=ssh | jq '.'
-
-# Get network stats
-curl http://localhost:8080/api/v1/stats | jq '.'
+GET   /api/v1/summary              # score, compteurs, dernier et prochain scan
+GET   /api/v1/devices              # appareils, ports et statut
+GET   /api/v1/devices/:ip
+PATCH /api/v1/devices/:ip          # {"name": "Caméra du salon"} ou {"known": true}
+GET   /api/v1/alerts               # alertes ouvertes (?all=true : aussi les résolues)
+POST  /api/v1/alerts/:id/read      # {"read": true}
+POST  /api/v1/alerts/read-all
+POST  /api/v1/scans                # demander un scan immédiat
+GET   /api/v1/scans/latest
+GET   /api/v1/stats
+GET   /api/v1/search?q=192.168
 ```
 
-## 🛡️ Security Features
-
-### Risk Detection
-
-Automatically detects and flags:
-- **Critical**: Telnet (23), FTP (21)
-- **High**: SMB (445), RDP (3389), MySQL (3306), MSSQL (1433)
-- **Medium**: PostgreSQL (5432), Redis (6379)
-
-### Alerts
-
-The system creates alerts for:
-- New devices detected
-- Risky ports opened
-- Service version changes
-- Devices going offline
-
-## 🔨 Development
-
-### Local Development (without Docker)
-
-1. **Start PostgreSQL**
-```bash
-docker-compose up -d postgres
-```
-
-2. **Run API**
-```bash
-make dev-api
-```
-
-3. **Run Scanner**
-```bash
-make dev-scanner
-```
-
-4. **Run Frontend**
-```bash
-cd web && npm install && npm run dev
-```
-
-### Build Binaries
+## Commandes utiles
 
 ```bash
-make build-all        # Build all binaries
-./bin/api             # Run API
-./bin/scanner         # Run scanner
-./bin/scheduler       # Run scheduler
+make up / make down     # démarrer / arrêter
+make logs-scanner       # suivre les scans
+make scan               # scan ponctuel
+make db-shell           # console PostgreSQL
 ```
 
-### Testing
+### Développement sans Docker
 
 ```bash
-make test             # Run tests
-make test-coverage    # Tests with coverage
+docker compose up -d postgres
+make dev-api                    # API sur :8080
+make dev-scheduler              # boucle de scan (nmap installé sur la machine)
+cd web && npm install && npm run dev   # interface sur :3000
 ```
 
-## 📁 Project Structure
+## Structure
 
 ```
-shodan-home/
-├── cmd/
-│   ├── api/          # API server
-│   ├── scanner/      # Scanner CLI
-│   └── scheduler/    # Cron scheduler
-├── internal/
-│   ├── api/          # API handlers
-│   ├── database/     # Database layer
-│   └── scanner/      # Scan logic
-├── web/              # React frontend
-├── migrations/       # SQL migrations
-├── docker-compose.yml
-├── Makefile
-└── README.md
+cmd/
+  api/          serveur API
+  scanner/      scan ponctuel
+  scheduler/    boucle de scan (cron + scans demandés)
+internal/
+  api/          routes et handlers
+  database/     accès PostgreSQL + schema.sql
+  monitor/      un scan complet → base + alertes
+  risk/         ports risqués et gravité
+  scanner/      pilotage de nmap
+web/            interface React (style « grand public »)
 ```
 
-## 🐛 Troubleshooting
+## Sécurité
 
-### Scanner can't access network
-```bash
-# Ensure network_mode: host in docker-compose.yml
-# Or run scanner directly on host:
-make dev-scanner
-```
+- L'interface n'a pas de compte : ne l'expose **pas** sur Internet, garde-la sur ton réseau local.
+- La base et l'API n'écoutent que sur la machine elle-même (`127.0.0.1`).
+- Le scanner ne tourne pas en root : nmap reçoit seulement les capacités réseau nécessaires.
+- Ne scanne que des réseaux qui t'appartiennent.
 
-### Permission denied for Nmap
-```bash
-# Scanner needs NET_ADMIN and NET_RAW capabilities
-# Already configured in docker-compose.yml
-```
+## Pistes
 
-### Database connection failed
-```bash
-# Check PostgreSQL is running
-docker-compose ps postgres
-
-# View logs
-docker-compose logs postgres
-```
-
-## 🚦 Roadmap
-
-- [ ] CVE Detection (match versions with vulnerability databases)
-- [ ] Email/Slack notifications
-- [ ] Network topology visualization
-- [ ] Custom scan profiles
-- [ ] Export reports (PDF/CSV)
-- [ ] Integration with Censys/VirusTotal APIs
-
-
-
-**⭐ Star this repo if you find it useful!**
+- [ ] Notifications sur le téléphone
+- [ ] Détection de CVE à partir des versions
+- [ ] Export de rapports

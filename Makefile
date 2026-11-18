@@ -1,7 +1,7 @@
 .PHONY: help build run stop clean test scan
 
 # Variables
-DOCKER_COMPOSE = docker-compose
+DOCKER_COMPOSE = docker compose
 GO = go
 API_PORT = 8080
 FRONTEND_PORT = 3000
@@ -72,8 +72,8 @@ dev-scheduler: ## Lance le scheduler en local
 db-shell: ## Accède au shell PostgreSQL
 	$(DOCKER_COMPOSE) exec postgres psql -U shodan -d shodan_home
 
-db-migrate: ## Applique les migrations
-	$(DOCKER_COMPOSE) exec postgres psql -U shodan -d shodan_home -f /docker-entrypoint-initdb.d/001_init.sql
+db-migrate: ## Applique le schéma (fait aussi automatiquement au démarrage de l'API et du scanner)
+	$(DOCKER_COMPOSE) restart api
 
 db-reset: ## Reset la base de données
 	$(DOCKER_COMPOSE) down -v
